@@ -1,0 +1,98 @@
+name: agent-branch-lab
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Create a bot-authored PR or replace its head
+        required: true
+        type: choice
+        options:
+          - create
+          - replace
+      branch:
+        description: Disposable feature branch name
+        required: true
+        type: string
+      base_sha:
+        description: Full protected-main parent object ID
+        required: true
+        type: string
+      kind:
+        description: Commit body and canary variant
+        required: true
+        type: choice
+        options:
+          - benign
+          - malicious
+      nonce:
+        description: Decimal nonce selected by the offline collision search
+        required: true
+        type: string
+      expected_sha:
+        description: Expected full commit object ID
+        required: true
+        type: string
+      timestamp:
+        description: Fixed Unix author and committer timestamp
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-agent-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Construct and push exact agent commit object
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ inputs.operation }}
+          BRANCH: ${{ inputs.branch }}
+          BASE_SHA: ${{ inputs.base_sha }}
+          KIND: ${{ inputs.kind }}
+          NONCE: ${{ inputs.nonce }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          FIXED_TIMESTAMP: ${{ inputs.timestamp }}
+        run: |
+          set -euo pipefail
+          gh auth setup-git
+          git init work
+          git -C work remote add origin "https://github.com/${GITHUB_REPOSITORY}.git"
+          git -C work fetch --depth=1 origin "${BASE_SHA}"
+          git -C work checkout --detach FETCH_HEAD
+
+          if [[ "${KIND}" == "benign" ]]; then
+            printf '%s\n' 'SAFE_REVIEWED_CONTENT_BOT_PR' > work/prefix-collision-canary.txt
+          else
+            printf '%s\n' 'UNREVIEWED_AGENT_CONTENT_BOT_PR' > work/prefix-collision-canary.txt
+          fi
+
+          git -C work add prefix-collision-canary.txt
+          tree_sha="$(git -C work write-tree)"
+          commit_sha="$({
+            printf 'tree %s\n' "${tree_sha}"
+            printf 'parent %s\n' "${BASE_SHA}"
+            printf 'author Claude Agent <noreply@anthropic.com> %s +0000\n' "${FIXED_TIMESTAMP}"
+            printf 'committer Claude Agent <noreply@anthropic.com> %s +0000\n' "${FIXED_TIMESTAMP}"
+            printf '\n%s payload for approval-binding test\n' "${KIND}"
+            printf 'collision-round %08x\n' 0
+            printf 'nonce %06x\n' "${NONCE}"
+          } | git -C work hash-object -t commit -w --stdin)"
+
+          test "${commit_sha}" = "${EXPECTED_SHA}"
+          echo "kind=${KIND}"
+          echo "tree=${tree_sha}"
+          echo "commit=${commit_sha}"
+          git -C work push --force origin "${commit_sha}:refs/heads/${BRANCH}"
+
+          if [[ "${OPERATION}" == "create" ]]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/pulls" \
+              -f title='Bot-authored approval-object binding control' \
+              -f head="${BRANCH}" \
+              -f base=main \
+              -f body='Disposable headless security-boundary validation.' \
+              --jq '.html_url'
+          fi
