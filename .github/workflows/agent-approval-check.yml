@@ -20,4 +20,4 @@ jobs:
         with:
           required_approvals: 2
           agent_emails: noreply@anthropic.com
-          agent_logins: github-actions[bot]
+          agent_logins: claude[bot],claude-code[bot]
