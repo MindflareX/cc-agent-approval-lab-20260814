@@ -1,0 +1,26 @@
+name: seed-agent-review
+
+on:
+  workflow_dispatch:
+    inputs:
+      pull_number:
+        description: Pull request number in this disposable lab repository
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Submit configured agent approval
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ inputs.pull_number }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh api --method POST "repos/${GH_REPO}/pulls/${PR_NUMBER}/reviews" \
+            -f event=APPROVE \
+            -f body='Disposable lab agent approval'
