@@ -16,8 +16,10 @@ jobs:
     if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     runs-on: ubuntu-latest
     steps:
-      - uses: anthropics/claude-code-action/agent-approval-check@e63208cb983318a44e3f945e959ef894b707dcfa
+      - uses: anthropics/claude-code-action/agent-approval-check@e5ad3c7725bc2459721893f88879fef9dbcf97b0 # v1.0.202
         with:
           required_approvals: 2
           agent_emails: noreply@anthropic.com
-          agent_logins: claude[bot],claude-code[bot]
+          # github-actions[bot] is a disposable stand-in for a configured
+          # agent identity in this isolated authorization-lifecycle lab.
+          agent_logins: claude[bot],claude-code[bot],github-actions[bot]
